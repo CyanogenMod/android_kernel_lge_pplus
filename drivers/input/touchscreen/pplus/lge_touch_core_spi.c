@@ -79,6 +79,7 @@ u8  is_probe = 0;
 static struct lge_touch_data *ts_data;
 bool touch_irq_mask = 1;
 int boot_mode = NORMAL_BOOT_MODE;
+static int lpwg_status = 0;
 
 
 #define SENSING_TEST_PATH "/mnt/sdcard/sensing_test.txt"
@@ -179,6 +180,11 @@ void send_uevent_lpwg(struct spi_device *spi, int type)
 			== UEVENT_IDLE) {
 		atomic_set(&ts->state.uevent, UEVENT_BUSY);
 		send_uevent(&spi->dev, lpwg_uevent[type-1]);
+   if (type == LPWG_DOUBLE_TAP) {
+ 			input_report_key(ts->input_dev, KEY_POWER, BUTTON_PRESSED);
+ 			input_report_key(ts->input_dev, KEY_POWER, BUTTON_RELEASED);
+ 			input_sync(ts->input_dev);
+ 		}
 	}
 
 	return;
@@ -2803,6 +2809,12 @@ static ssize_t store_lpwg_data(struct spi_device *spi,
 	return count;
 }
 
+
+static ssize_t show_lpwg_notify(struct i2c_client *client, char *buf)
+ {
+ 	return sprintf(buf, "%d\n", lpwg_status);
+ }
+ 
 /* Sysfs - lpwg_notify (Low Power Wake-up Gesture)
  *
  * write
@@ -2848,6 +2860,7 @@ static ssize_t store_lpwg_notify(struct spi_device *spi,
 				(ts->pdata->role->use_security_mode)
 				? value[0]
 				: 0;
+    lpwg_status = (value[0]) ? 1 : 0;
 			break;
 		case 2:
 			touch_device_func->lpwg(spi,
@@ -3505,7 +3518,7 @@ static LGE_TOUCH_ATTR(fw_upgrade, S_IRUGO | S_IWUSR,
 static LGE_TOUCH_ATTR(lpwg_data,
 		S_IRUGO | S_IWUSR, show_lpwg_data, store_lpwg_data);
 static LGE_TOUCH_ATTR(lpwg_notify, S_IRUGO | S_IWUSR, NULL, store_lpwg_notify);
-static LGE_TOUCH_ATTR(keyguard, S_IRUGO | S_IWUSR, NULL, store_keyguard_info);
+static LGE_TOUCH_ATTR(keyguard, S_IRUGO | S_IWUSR, show_lpwg_notify, store_keyguard_info);
 static LGE_TOUCH_ATTR(ime_status, S_IRUGO | S_IWUSR,
 		show_ime_drumming_status, store_ime_drumming_status);
 static LGE_TOUCH_ATTR(quick_cover_status, S_IRUGO | S_IWUSR,
@@ -4692,6 +4705,8 @@ static int touch_probe_normal(struct spi_device *spi)
 
 	set_bit(EV_SYN, ts->input_dev->evbit);
 	set_bit(EV_ABS, ts->input_dev->evbit);
+  set_bit(EV_KEY, ts->input_dev->evbit);
+  set_bit(KEY_POWER, ts->input_dev->keybit);
 	set_bit(INPUT_PROP_DIRECT, ts->input_dev->propbit);
 
 	input_set_abs_params(ts->input_dev,
